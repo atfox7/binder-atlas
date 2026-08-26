@@ -18,7 +18,7 @@
   const $ = id => document.getElementById(id);
   const elements = {
     binderSelect: $("binderSelect"), binderMeta: $("binderMeta"), updateBanner: $("updateBanner"),
-    percentStat: $("percentStat"), progressBar: $("progressBar"), collectedStat: $("collectedStat"),
+    percentStat: $("percentStat"), progressBar: $("progressBar"), collectedStat: $("collectedStat"), portfolioStat: $("portfolioStat"),
     missingStat: $("missingStat"), orderedStat: $("orderedStat"), sectionStats: $("sectionStats"),
     searchForm: $("searchForm"), searchInput: $("searchInput"), searchResults: $("searchResults"),
     searchScopeCurrent: $("searchScopeCurrent"), searchScopeAll: $("searchScopeAll"),
@@ -413,6 +413,19 @@
     elements.binderMeta.textContent = `${definition.format} · ${pages} pocket pages · ${pocketsPerPage()} pockets/page`;
   }
 
+
+  function marketPrice(card) {
+    const table = window.RIFTBOUND_PRICES && window.RIFTBOUND_PRICES.byTcgplayerId;
+    if (!table || card.tcgplayerId == null) return null;
+    const value = table[String(card.tcgplayerId)];
+    return typeof value === "number" ? value : null;
+  }
+
+  function formatUsd(value) {
+    if (value == null) return "—";
+    return value.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+  }
+
   function renderStats() {
     let collected = 0;
     let ordered = 0;
@@ -433,6 +446,26 @@
     elements.collectedStat.textContent = `${collected} of ${total} cards`;
     elements.missingStat.textContent = String(total - collected - ordered);
     elements.orderedStat.textContent = String(ordered);
+    let portfolio = 0;
+    let priced = 0;
+    let unpriced = 0;
+    currentCards.forEach(card => {
+      const entry = getEntry(card._key);
+      if (entry.status !== "collected") return;
+      const price = marketPrice(card);
+      if (price == null) {
+        unpriced += 1;
+        return;
+      }
+      priced += 1;
+      portfolio += price * Math.max(1, entry.quantity || 1);
+    });
+    if (elements.portfolioStat) {
+      elements.portfolioStat.textContent = formatUsd(priced || unpriced ? portfolio : null);
+      elements.portfolioStat.title = unpriced
+        ? `${priced} priced, ${unpriced} collected without a TCGplayer market price (excluded from the total)`
+        : `${priced} collected cards with a market price`;
+    }
     elements.sectionStats.replaceChildren(...[...bySection].map(([name, values]) => {
       const button = document.createElement("button");
       button.type = "button";
@@ -540,7 +573,8 @@
       preview.appendChild(image);
       const overlay = document.createElement("span");
       overlay.className = "pocket-overlay";
-      overlay.innerHTML = `<span class="pocket-name">${escapeHtml(card.name)}</span><span class="pocket-code">${escapeHtml(displayCode(card))}</span>`;
+      const price = marketPrice(card);
+      overlay.innerHTML = `<span class="pocket-name">${escapeHtml(card.name)}</span><span class="pocket-code">${escapeHtml(displayCode(card))}${price != null ? ` · ${formatUsd(price)}` : ""}</span>`;
       preview.appendChild(overlay);
       preview.addEventListener("click", () => openPreview(card));
       pocket.appendChild(preview);

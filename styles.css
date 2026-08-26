@@ -309,3 +309,5 @@ dialog::backdrop { background: rgba(15, 20, 28, .62); backdrop-filter: blur(2px)
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
 }
+
+.stat #portfolioStat { font-variant-numeric: tabular-nums; }
