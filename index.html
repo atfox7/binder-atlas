@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#182234">
+<meta name="color-scheme" content="light">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Binder Atlas">
+<title>Riftbound Binder Atlas</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23182234'/%3E%3Ctext x='32' y='45' font-family='Georgia,serif' font-size='38' font-weight='700' fill='%23fff' text-anchor='middle'%3ER%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="app-shell">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">R</span>
+      <div>
+        <p class="eyebrow">Riftbound</p>
+        <h1>Binder Atlas</h1>
+      </div>
+    </div>
+
+    <label class="field-label" for="binderSelect">Binder</label>
+    <select class="binder-select" id="binderSelect" aria-label="Choose binder"></select>
+    <p class="binder-meta" id="binderMeta"></p>
+
+    <div class="notice" id="updateBanner" hidden></div>
+
+    <div class="stats">
+      <div class="stat stat-wide">
+        <div class="progress-head">
+          <span>Collected</span>
+          <strong id="percentStat">0%</strong>
+        </div>
+        <div class="progress-track"><span id="progressBar"></span></div>
+        <span id="collectedStat">0 of 0 cards</span>
+      </div>
+      <div class="stat">
+        <strong id="missingStat">0</strong>
+        <span>Missing</span>
+      </div>
+      <div class="stat">
+        <strong id="orderedStat">0</strong>
+        <span>Ordered</span>
+      </div>
+    </div>
+
+    <div class="section-stats" id="sectionStats"></div>
+
+    <div class="search-wrap">
+      <form class="search-form" id="searchForm" role="search" autocomplete="off">
+        <div class="search-scope" role="group" aria-label="Search scope">
+          <label>
+            <input type="radio" name="searchScope" id="searchScopeCurrent" value="current" checked>
+            <span>This binder</span>
+          </label>
+          <label>
+            <input type="radio" name="searchScope" id="searchScopeAll" value="all">
+            <span>All binders</span>
+          </label>
+        </div>
+        <div class="search-row">
+          <input type="search" id="searchInput" placeholder="Search cards  ( / )" aria-label="Search cards">
+          <button type="submit" class="icon-btn" aria-label="Jump to first match" title="Jump to first match">⏎</button>
+        </div>
+      </form>
+      <div class="search-results" id="searchResults" hidden></div>
+    </div>
+
+    <div class="card-detail" id="cardDetail">
+      <div class="detail-preview">
+        <img id="detailImage" alt="" hidden>
+        <div class="detail-fallback" id="detailFallback">Select a pocket</div>
+      </div>
+      <div class="detail-copy">
+        <div class="detail-labels">
+          <span id="detailId"></span>
+          <span id="detailSection"></span>
+        </div>
+        <h2 id="detailName">No card selected</h2>
+        <p id="detailLocation">Choose a pocket to see its page, slot, and status.</p>
+      </div>
+      <div class="status-actions">
+        <button type="button" class="status-btn collected" id="markCollected" aria-pressed="false" disabled>Collected <kbd>C</kbd></button>
+        <button type="button" class="status-btn ordered" id="markOrdered" aria-pressed="false" disabled>Ordered <kbd>O</kbd></button>
+        <button type="button" class="status-btn missing" id="markMissing" aria-pressed="false" disabled>Missing <kbd>M</kbd></button>
+        <button type="button" class="status-btn" id="undoButton" disabled>Undo <kbd>⌘Z</kbd></button>
+      </div>
+    </div>
+
+    <div class="sidebar-actions">
+      <button type="button" class="secondary" id="packModeButton">Pack rip</button>
+      <button type="button" class="secondary" id="shoppingButton">Shopping list</button>
+      <button type="button" class="secondary" id="layoutButton">Binder update plan</button>
+      <button type="button" class="secondary" id="moreButton">Data &amp; backup</button>
+    </div>
+
+    <p class="save-status" id="saveStatus">Saved locally</p>
+  </aside>
+
+  <main class="workspace">
+
+    <div class="toolbar">
+      <div class="toolbar-group">
+        <button type="button" class="tool-btn" id="previousSpread" aria-label="Previous spread">‹</button>
+        <div class="spread-copy">
+          <strong id="spreadTitle">Spread 1</strong>
+          <span id="spreadSubtitle"></span>
+        </div>
+        <button type="button" class="tool-btn" id="nextSpread" aria-label="Next spread">›</button>
+      </div>
+
+      <nav class="section-nav" id="sectionNav" aria-label="Jump to section"></nav>
+
+      <div class="toolbar-group toolbar-right">
+        <label class="toggle">
+          <input type="checkbox" id="missingOnly">
+          <span>Missing only</span>
+        </label>
+        <label class="page-jump">
+          <span>Page</span>
+          <input type="number" id="pageJump" min="1" value="1" step="1" aria-label="Jump to page">
+        </label>
+      </div>
+    </div>
+
+    <div class="binder-stage" id="binderStage">
+      <button type="button" class="binder-turn previous" id="binderPrevious" aria-label="Previous page">‹</button>
+
+      <div class="binder">
+        <section class="page">
+          <header>
+            <span id="leftPageLabel">Binder overview</span>
+            <small id="leftSectionLabel"></small>
+          </header>
+          <div id="leftGrid"></div>
+        </section>
+
+        <div class="spine" aria-hidden="true"><span></span></div>
+
+        <section class="page">
+          <header>
+            <span id="rightPageLabel">Page 1</span>
+            <small id="rightSectionLabel"></small>
+          </header>
+          <div id="rightGrid"></div>
+        </section>
+      </div>
+
+      <button type="button" class="binder-turn next" id="binderNext" aria-label="Next page">›</button>
+    </div>
+
+    <div class="legend">
+      <span><i class="legend-dot collected"></i> Collected</span>
+      <span><i class="legend-dot ordered"></i> Ordered</span>
+      <span><i class="legend-dot missing"></i> Missing</span>
+      <span><i class="legend-dot new"></i> New to this binder</span>
+      <span class="legend-tip">Tick a pocket to collect it. Tap the art to preview. Keys: C / O / M, ⌘Z to undo, arrows to turn pages.</span>
+    </div>
+
+  </main>
+</div>
+
+<!-- Pack rip -->
+<dialog id="packDialog">
+  <div class="dialog-shell pack-shell">
+    <div class="dialog-head">
+      <h2>Pack rip</h2>
+      <button type="button" class="close-btn" data-close="packDialog" aria-label="Close">×</button>
+    </div>
+    <div class="dialog-body">
+      <p class="dialog-intro">Type a card name or number and press Enter to add it. Each add increases the copy count and marks the pocket collected.</p>
+      <input type="search" class="dialog-input" id="packInput" placeholder="Card name or number" aria-label="Card name or number" autocomplete="off">
+      <div class="pack-matches" id="packMatches"></div>
+      <h3>Just added</h3>
+      <div class="recent-list" id="packRecent"></div>
+    </div>
+  </div>
+</dialog>
+
+<!-- Binder update plan -->
+<dialog id="layoutDialog">
+  <div class="dialog-shell">
+    <div class="dialog-head">
+      <h2>Binder update plan</h2>
+      <button type="button" class="close-btn" data-close="layoutDialog" aria-label="Close">×</button>
+    </div>
+    <div class="dialog-body">
+      <p class="dialog-intro" id="layoutSummary"></p>
+      <div class="dialog-actions stack-mobile">
+        <button type="button" class="primary" id="acceptLayout">Accept as my physical layout</button>
+        <button type="button" class="secondary" id="downloadLayout">Download move list</button>
+      </div>
+      <div class="change-list" id="layoutChanges"></div>
+    </div>
+  </div>
+</dialog>
+
+<!-- Data & backup -->
+<dialog id="dataDialog">
+  <div class="dialog-shell">
+    <div class="dialog-head">
+      <h2>Data &amp; backup</h2>
+      <button type="button" class="close-btn" data-close="dataDialog" aria-label="Close">×</button>
+    </div>
+    <div class="dialog-body">
+      <div class="data-grid">
+        <div class="data-card full">
+          <h3>Card lists</h3>
+          <p id="catalogStatus"></p>
+          <button type="button" class="primary" id="syncButton">Check &amp; sync card lists</button>
+        </div>
+        <div class="data-card">
+          <h3>Export backup</h3>
+          <p>Download a JSON copy of your collection, layouts, and preferences.</p>
+          <button type="button" class="secondary" id="exportButton">Export backup</button>
+        </div>
+        <div class="data-card">
+          <h3>Import backup</h3>
+          <p>Replaces everything currently saved in this browser. Export first if in doubt.</p>
+          <label class="file-button">
+            Choose backup file
+            <input type="file" id="importInput" accept="application/json,.json" hidden>
+          </label>
+        </div>
+        <div class="data-card full">
+          <p>Progress is saved in this browser only. Clearing site data, switching browsers, or moving devices loses it. Keep an occasional exported backup.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<!-- Card preview -->
+<dialog id="previewDialog" class="preview-dialog">
+  <div class="preview-shell">
+    <button type="button" class="close-btn preview-close" data-close="previewDialog" aria-label="Close preview">×</button>
+    <img id="previewImage" alt="">
+    <div class="preview-copy">
+      <p class="eyebrow" id="previewMeta"></p>
+      <h2 id="previewName"></h2>
+      <label class="preview-collection">
+        <input type="checkbox" id="previewCollected">
+        <span>
+          <strong>Collected</strong>
+          <small>Tick to mark this card collected in your binder.</small>
+        </span>
+      </label>
+      <p id="previewStatus"></p>
+    </div>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="cards-snapshot.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
