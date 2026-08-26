@@ -6,6 +6,9 @@
   const CHECK_KEY = "riftbound-card-catalog-last-check";
   const API = "https://api.riftcodex.com";
   const APP_VERSION = 3;
+  const AUTH_ME_PATH = "/api/v1/auth/me";
+  const COLLECTION_PATH = "/api/v1/binder-atlas/collection";
+  const LOGIN_URL = "https://ezstudycards.com/app?next=https://binderatlas.ezstudycards.com/";
 
   const BINDER_DEFINITIONS = [
     { id: "OGN", label: "Origins + Proving Grounds", sources: ["OGN", "OGS"], rows: 3, format: "VaultX 4×3" },
@@ -26,7 +29,7 @@
     detailSection: $("detailSection"), detailName: $("detailName"), detailLocation: $("detailLocation"),
     markCollected: $("markCollected"), markOrdered: $("markOrdered"), markMissing: $("markMissing"),
     undoButton: $("undoButton"), packModeButton: $("packModeButton"), shoppingButton: $("shoppingButton"),
-    layoutButton: $("layoutButton"), moreButton: $("moreButton"), saveStatus: $("saveStatus"),
+    layoutButton: $("layoutButton"), moreButton: $("moreButton"), saveStatus: $("saveStatus"), accountStatus: $("accountStatus"), storageNote: $("storageNote"),
     previousSpread: $("previousSpread"), nextSpread: $("nextSpread"), binderPrevious: $("binderPrevious"), binderNext: $("binderNext"), spreadTitle: $("spreadTitle"),
     spreadSubtitle: $("spreadSubtitle"), sectionNav: $("sectionNav"), missingOnly: $("missingOnly"),
     pageJump: $("pageJump"), binderStage: $("binderStage"), leftPageLabel: $("leftPageLabel"),
@@ -53,6 +56,8 @@
   let undoStack = [];
   let packRecent = [];
   let toastTimer;
+  let cloudSaveTimer;
+  let cloudSyncEnabled = false;
 
   function chooseCatalog() {
     const embedded = window.RIFTBOUND_SNAPSHOT;
@@ -191,12 +196,150 @@
     return null;
   }
 
+  function isProductionHost() {
+    const host = location.hostname;
+    return host === "binderatlas.ezstudycards.com" || host === "ezstudycards.com";
+  }
+
+  function unwrapApiPayload(payload) {
+    if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "success") && Object.prototype.hasOwnProperty.call(payload, "data")) {
+      return payload.data;
+    }
+    return payload;
+  }
+
+  function collectionDocumentFromPayload(payload) {
+    const unwrapped = unwrapApiPayload(payload);
+    if (!unwrapped || typeof unwrapped !== "object") return null;
+    const doc = unwrapped.database && (unwrapped.database.binders || unwrapped.database.sets) ? unwrapped.database : unwrapped;
+    if (doc.binders || doc.sets) return doc;
+    return null;
+  }
+
+  function databaseHasCollection(db) {
+    if (!db?.binders) return false;
+    return Object.values(db.binders).some(binder => Object.keys(binder?.statuses || {}).length || (binder?.layout || []).length);
+  }
+
+  function adoptDatabase(incoming) {
+    database = incoming.schemaVersion >= 2 ? upgradeDatabase(incoming) : migrateVersionOne(incoming);
+    activeBinderId = database.preferences?.activeBinder || "SFD";
+    undoStack = [];
+  }
+
+  function accountEmail(me) {
+    return me?.email || me?.user?.email || "";
+  }
+
+  function redirectToLogin() {
+    location.href = LOGIN_URL;
+  }
+
+  function setSaveStatus(message) {
+    elements.saveStatus.textContent = `${message} · ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+  }
+
   function saveDatabase(message = "Saved locally") {
     database.updatedAt = new Date().toISOString();
     database.preferences.activeBinder = activeBinderId;
     database.preferences.missingOnly = elements.missingOnly.checked;
     localStorage.setItem(DB_KEY, JSON.stringify(database));
-    elements.saveStatus.textContent = `${message} · ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    const localMessage = isProductionHost() && message === "Saved locally" ? "Saved" : message;
+    setSaveStatus(localMessage);
+    if (cloudSyncEnabled) scheduleCloudSave();
+  }
+
+  function scheduleCloudSave() {
+    clearTimeout(cloudSaveTimer);
+    cloudSaveTimer = setTimeout(() => { putCollectionToServer(); }, 500);
+  }
+
+  async function apiFetch(path, options = {}) {
+    return fetch(path, {
+      credentials: "include",
+      ...options,
+      headers: { Accept: "application/json", ...(options.headers || {}) }
+    });
+  }
+
+  async function fetchAuthMe() {
+    const response = await apiFetch(AUTH_ME_PATH);
+    if (response.status === 401 || response.status === 403) return null;
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    return unwrapApiPayload(await response.json());
+  }
+
+  async function getCollectionFromServer() {
+    const response = await apiFetch(COLLECTION_PATH);
+    if (response.status === 401 || response.status === 403) return { redirected: true };
+    if (response.status === 404) return { document: null };
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    let payload = null;
+    try { payload = await response.json(); } catch { payload = null; }
+    return { document: collectionDocumentFromPayload(payload) };
+  }
+
+  async function putCollectionToServer() {
+    try {
+      const response = await apiFetch(COLLECTION_PATH, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(database)
+      });
+      if (response.status === 401 || response.status === 403) {
+        redirectToLogin();
+        return false;
+      }
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      setSaveStatus("Saved to account");
+      return true;
+    } catch (error) {
+      console.error(error);
+      setSaveStatus("Saved locally · cloud sync failed");
+      return false;
+    }
+  }
+
+  function showSignedIn(me) {
+    const email = accountEmail(me);
+    if (!elements.accountStatus) return;
+    elements.accountStatus.hidden = false;
+    elements.accountStatus.textContent = email ? `Signed in as ${email}` : "Signed in";
+  }
+
+  function applyHostedCopy() {
+    if (!elements.storageNote) return;
+    elements.storageNote.textContent = "Progress is saved to your EZ Study Cards account and cached in this browser. Export a backup if you want an extra copy.";
+  }
+
+  async function syncHostedCollection() {
+    if (!isProductionHost()) return true;
+    const me = await fetchAuthMe();
+    if (!me) {
+      redirectToLogin();
+      return false;
+    }
+    showSignedIn(me);
+    applyHostedCopy();
+    try {
+      const result = await getCollectionFromServer();
+      if (result.redirected) {
+        redirectToLogin();
+        return false;
+      }
+      if (result.document) {
+        adoptDatabase(result.document);
+        localStorage.setItem(DB_KEY, JSON.stringify(database));
+        setSaveStatus("Loaded from account");
+      } else if (databaseHasCollection(database)) {
+        await putCollectionToServer();
+      }
+    } catch (error) {
+      console.error(error);
+      showToast("Could not load your saved collection; using this browser's copy");
+    }
+    cloudSyncEnabled = true;
+    return true;
   }
 
   function normalize(value) {
@@ -1153,9 +1296,19 @@
     renderAll();
   });
 
-  elements.missingOnly.checked = Boolean(database.preferences?.missingOnly);
-  initializeBinderState();
-  saveDatabase(database.migratedFrom ? "Previous Spiritforged progress migrated" : "Saved locally");
-  renderAll();
-  checkForCatalogUpdates();
+  async function startApp() {
+    try {
+      const ok = await syncHostedCollection();
+      if (!ok) return;
+    } catch (error) {
+      console.error(error);
+      showToast("Could not reach your account; using this browser's copy");
+    }
+    elements.missingOnly.checked = Boolean(database.preferences?.missingOnly);
+    initializeBinderState();
+    saveDatabase(database.migratedFrom ? "Previous Spiritforged progress migrated" : (isProductionHost() ? "Saved" : "Saved locally"));
+    renderAll();
+    checkForCatalogUpdates();
+  }
+  startApp();
 })();
