@@ -7,6 +7,7 @@
   const API = "https://api.riftcodex.com";
   const APP_VERSION = 3;
   const AUTH_ME_PATH = "/api/v1/auth/me";
+  const AUTH_REFRESH_PATH = "/api/v1/auth/refresh";
   const COLLECTION_PATH = "/api/v1/binder-atlas/collection";
   const LOGIN_URL = "https://ezstudycards.com/app?next=https://binderatlas.ezstudycards.com/";
 
@@ -254,12 +255,34 @@
     cloudSaveTimer = setTimeout(() => { putCollectionToServer(); }, 500);
   }
 
+  async function tryRefreshSession() {
+    try {
+      const response = await fetch(AUTH_REFRESH_PATH, {
+        method: "POST",
+        credentials: "include",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: "{}"
+      });
+      return response.status === 200;
+    } catch {
+      return false;
+    }
+  }
+
   async function apiFetch(path, options = {}) {
-    return fetch(path, {
+    const request = {
       credentials: "include",
       ...options,
       headers: { Accept: "application/json", ...(options.headers || {}) }
-    });
+    };
+    const response = await fetch(path, request);
+    if (response.status !== 401 || !isProductionHost() || path === AUTH_REFRESH_PATH) return response;
+    const refreshed = await tryRefreshSession();
+    if (!refreshed) {
+      redirectToLogin();
+      return response;
+    }
+    return fetch(path, request);
   }
 
   async function fetchAuthMe() {
